@@ -1,3 +1,23 @@
+<# 
+.SYNOPSIS 
+
+DFIR Lab 1 script to poll a collection of information from a target computer
+
+.DESCRIPTION
+
+DFIR Lab 1 script to poll a collection of information from a target computer 
+ 
+.OUTPUTS 
+Console and CSV files locally
+
+.PARAMETER Remote 
+[Optional] IP or domain name of a target machine to run the script on.
+	IF null it will run on this machine.
+
+#> 
+
+# grab parameters.
+Param([string]$Remote = "127.0.0.1")
 
 #
 # Small helper function to print out the pretty objects we make along the way
@@ -137,16 +157,76 @@ foreach ($srvc in $listeningServices){ #get service name
 printSubHeader -name "Listening Services" -obj $listeningServices
 $establishedConnections = Get-NetTCPConnection -State Established| Select State, LocalPort, LocalAddress, RemoteAddress, OwningProcess, CreationTime
 foreach ($srvc in $establishedConnections){ #get service name
-	$srvc | Add-Member "Process Name" (Get-Process -Id $srvc.OwningProcess)
+	$srvc | Add-Member "Process Name" (Get-Process -Id $srvc.OwningProcess).ProcessName
 	$srvc | Add-Member "Protocol" "TCP"
 }
 printSubHeader -name "Established Connections" -obj $listeningServices
 $dnsCache = Get-DnsClientCache
 printSubHeader -name "DNS Cache" -obj $dnsCache
 
-
-
+##################################################################
+##################### NWShares, printers, wifi ###################
+##################################################################
 $nwshares = get-smbshare
 $printers = Get-Printer
 $wifi = netsh wlan show profiles 
+printSubHeader -name "Network Shares" -obj $nwshares
+printSubHeader -name "Printers" -obj $printers
+printSubHeader -name "Wifi" -obj $wifi
 
+##################################################################
+##################### Installed Software #########################
+##################################################################
+Write-Host "Getting installed products, this may take a while..."
+$installedSoftware = Get-WmiObject -class win32_product | select Name
+printObj -name "Installed Products" -obj $installedSoftware
+
+##################################################################
+##################### Get process list  ##########################
+##################################################################
+$procs = Get-WmiObject win32_process | Select Name, ProcessId, ParentProcessId, ExecutablePath
+foreach($proc in $procs) {
+	$proc | Add-Member "Owner" ($proc).GetOwner().User
+}
+printObj -name "Processes" -obj $procs
+
+##################################################################
+##################### Get drivers list  ##########################
+##################################################################
+$drivers = Get-WmiObject Win32_PnPSignedDriver | Select DriverName, StartMode, Path, DriverVersion, InstallDate, DriverProviderName
+printObj -name "Drivers" $drivers
+
+##################################################################
+##################### Get Documents/Downloaded Files of all users #################
+##################################################################
+#we just have to iterate over all users
+$locals = Get-ChildItem -Path "C:\Users" | Select Name
+$files = @()
+foreach ($user in $locals){
+	try {
+		$path = ("C:\Users\" + $user.Name)
+		$downloads = Get-ChildItem -Path ($path + "\Downloads") | Select Name
+		$documents = Get-ChildItem -Path ($path + "\Documents") | Select Name
+		#make a few pretty objects to display
+		foreach ($download in $downloads) {
+			$file = New-Object PSObject
+			$file | Add-Member FileName $download.Name
+			$file | Add-Member Owner $user.Name
+			$file | Add-Member Folder ($path + "\Downloads")
+			$files += $file
+		}
+		foreach ($document in $documents) {
+			$file = New-Object PSObject
+			$file | Add-Member FileName $document.Name
+			$file | Add-Member Owner $user.Name
+			$file | Add-Member Folder ($path + "\Documents")
+			$files += $file
+		}
+	} catch {
+		Write-Host ("permission denied to " + $user)
+	}
+}
+printObj -name "Documents/Downloads of all Users" -obj $files
+##
+## The stackpole list of forensics has been completed, now we get our 3 custom ones
+##
