@@ -14,12 +14,23 @@ Console and CSV files locally
 [Optional] IP or domain name of a target machine to run the script on.
 	IF null it will run on this machine.
 	Remotes can be multiple if you supply a comma seperated list
+	
+.PARAMETER Email
+[Optional] If enabled, will prompt for an email address user/pass (gmail) to send the csvs
+.PARAMETER EmailTarget
+[Optional] Needed if Email is enabled, email address of where to send the email
 #> 
 
 # grab parameters.
-Param([string]$Remotes = "null")
+Param([string]$Remotes = "null",[switch]$Email=$false, [string]$EmailTarget=$false)
+
+if ($Email) {
+	$EmailCredential = (Get-Credential -Message "Gmail username and password")
+}
 
 function aggregateData() {
+	#keeps track of csvs we make as we go
+	$emailList = @()
 	#
 	# Small helper function to print out the pretty objects we make along the way
 	#
@@ -28,10 +39,14 @@ function aggregateData() {
 		Write-Host "#"$name
 		Write-Host "###################################"
 		Write-Host (($obj) | Out-String)
+		$obj | Export-CSV ('./' + $name + '.csv')
+		$emailList += ($name + '.csv')
 	}
 	function printSubHeader($name, $obj) {
 		Write-Host "######"$name
 		Write-Host (($obj) | Out-String)
+		$obj | Export-CSV ('./' + $name + '.csv')
+		$emailList += ($name + '.csv')
 	}
 	##################################################################
 	##################### Time Info###################################
@@ -239,6 +254,14 @@ function aggregateData() {
 	printObj -name "Security Log" -obj $securityLog
 	printObj -name "Bios Info" -obj $bios
 	
+	if ($Email -ne $false) {
+		Write-Host "Attempting to send email ..."
+		$emailList = $emailList | ? { $_ } | sort -uniq #remove duplicates
+		Add-Type -Assembly System.IO.Compression.FileSystem
+		$compressionLevel = [System.IO.Compression.CompressionLevel]::Optimal
+		[System.IO.Compression.ZipFile]::CreateFromDirectory($PSScriptRoot, "dfir.zip", $compressionLevel, $false)
+		Send-MailMessage -Credential $EmailCredential -From (($EmailCredential.UserName) + '@gmail.com') -To $EmailTarget -Subject "CSVS for DFIR" -Attachments 'dfir.zip' -SmtpServer "smtp.gmail.com" -Port 587 -UseSsl $true
+	}
 }
 
 if ($Remotes -ne "null") {
