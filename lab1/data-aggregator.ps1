@@ -8,6 +8,10 @@ function printObj($name, $obj) {
 	Write-Host "###################################"
 	Write-Host (($obj) | Out-String)
 }
+function printSubHeader($name, $obj) {
+	Write-Host "######"$name
+	Write-Host (($obj) | Out-String)
+}
 ##################################################################
 ##################### Time Info###################################
 ##################################################################
@@ -84,7 +88,65 @@ printObj -name "User Information" -obj $users
 ##################################################################
 ##################### Start at Boot Services######################
 ##################################################################
+#just grab the automatic ones - ones on startup
 $svcs = Get-Service | where {$_.StartType -eq 'Automatic'} | Select Name, DisplayName
 printObj -name "Automatic Services on boot" -obj $svcs
-$programs = Get-Ciminstance win32_startupcommand
+#
+$programs = Get-WmiObject win32_startupcommand | Select Command, User, Location
 printObj -name "Startup Programs on boot" -obj $programs
+
+##################################################################
+##################### Scheduled Tasks ############################
+##################################################################
+$tasks = Get-ScheduledTask
+printObj -name "Scheduled Tasks" -obj $tasks
+
+##################################################################
+##################### Network ####################################
+##################################################################
+
+#
+# Note: Because of the nature of these instances of unrelated data,
+# we cannot form one simple table, so we are going to simply output
+# a set of information prefixed with a label 
+#
+Write-Host "###################################" #custom header
+Write-Host "###### Networking Information #####"
+Write-Host "###################################"
+$arpData = arp -a
+printSubHeader -name "Arp Data" -obj $arpData
+$macInterfaces = getmac
+printSubHeader -name "Mac Interfaces" -obj $macInterfaces
+$routeTable = Get-NetRoute
+printSubHeader -name "Routing Table" -obj $routeTable
+$ipConfig = Get-NetIPAddress | Select IPAddress, InterfaceAlias
+printSubHeader -name "Ip Addresses" -obj $ipConfig
+$dhcp = Get-WmiObject win32_networkadapterconfiguration | select DHCPServer
+printSubHeader -name "DHCP Server" -obj $dhcp
+$dns = Get-DnsClientServerAddress
+printSubHeader -name "DNS Servers" -obj $dns
+$ipv4 = Get-NetIPConfiguration | foreach IPv4defaultgateway | Select nexthop
+printSubHeader -name "IPv4 Gateway" -obj $ipv4
+$ipv6 = Get-NetIPConfiguration | foreach IPv46defaultgateway | Select nexthop
+printSubHeader -name "IPv6 Gateway" -obj $ipv6
+$listeningServices = Get-NetTCPConnection -State Listen | Select State, LocalPort, LocalAddress, RemoteAddress, OwningProcess
+foreach ($srvc in $listeningServices){ #get service name
+	$srvc | Add-Member "Process Name" (Get-Process -Id $srvc.OwningProcess)
+	$srvc | Add-Member "Protocol" "TCP"
+}
+printSubHeader -name "Listening Services" -obj $listeningServices
+$establishedConnections = Get-NetTCPConnection -State Established| Select State, LocalPort, LocalAddress, RemoteAddress, OwningProcess, CreationTime
+foreach ($srvc in $establishedConnections){ #get service name
+	$srvc | Add-Member "Process Name" (Get-Process -Id $srvc.OwningProcess)
+	$srvc | Add-Member "Protocol" "TCP"
+}
+printSubHeader -name "Established Connections" -obj $listeningServices
+$dnsCache = Get-DnsClientCache
+printSubHeader -name "DNS Cache" -obj $dnsCache
+
+
+
+$nwshares = get-smbshare
+$printers = Get-Printer
+$wifi = netsh wlan show profiles 
+
